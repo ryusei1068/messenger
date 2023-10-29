@@ -1,39 +1,35 @@
-use tokio::net::TcpListener;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
 
     loop {
-        let (socket, addr) = listener.accept().await.unwrap();
-        println!("new client: {:?}", addr);
+        let (mut socket, addr) = listener.accept().await.unwrap();
 
-        tokio::spawn(async move {
-            process(socket).await;
-        });
+        tokio::spawn(async move { process(socket).await });
     }
 }
+async fn process(mut socket: TcpStream) {
+    let mut buf = [0; 1024];
 
-async fn process(socket: TcpStream) {
+    loop {
+        let n = match socket.read(&mut buf).await {
+            Ok(n) if n == 0 => {
+                println!("{:?}", buf);
+                return;
+            }
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!("failed to read from socket; err = {:?}", e);
+                return;
+            }
+        };
 
-    //      while let Some(frame) = connection.read_frame().await.unwrap() {
-    //         let response = match Command::from_frame(frame).unwrap() {
-    //             Set(cmd) => {
-    //                 let mut db = db.lock().unwrap();
-    //                 db.insert(cmd.key().to_string(), cmd.value().to_vec().into());
-    //                 Frame::Simple("OK".to_string())
-    //             }
-    //             Get(cmd) => {
-    //                 let mut db = db.lock().unwrap();
-    //                 if let Some(value) = db.get(cmd.key()) {
-    //                     Frame::Bulk(value.clone().into())
-    //                 } else {
-    //                     Frame::Null
-    //                 }
-    //             }
-    //             cmd => panic!("unimplemented {:?}", cmd),
-    //         };
-    //
-    //         connection.write_frame(&response).await.unwrap();
-    //     }
+        if let Err(e) = socket.write_all(&buf[0..n]).await {
+            eprintln!("failed to write to socket; err = {:?}", e);
+            return;
+        }
+    }
 }
