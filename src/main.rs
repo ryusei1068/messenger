@@ -1,35 +1,27 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use core::str::from_utf8;
+use std::net::UdpSocket;
+use std::thread;
 
-#[tokio::main]
-async fn main() {
-    let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+fn main() -> std::io::Result<()> {
+    let socket = UdpSocket::bind("127.0.0.1:34254")?;
 
-    loop {
-        let (mut socket, addr) = listener.accept().await.unwrap();
-
-        tokio::spawn(async move { process(socket).await });
-    }
-}
-async fn process(mut socket: TcpStream) {
-    let mut buf = [0; 1024];
+    let mut buf = [0; 4096];
 
     loop {
-        let n = match socket.read(&mut buf).await {
-            Ok(n) if n == 0 => {
-                println!("{:?}", buf);
-                return;
+        match socket.recv_from(&mut buf) {
+            Ok((amt, src)) => {
+                thread::spawn(move || {
+                    let buf = &mut buf[..amt];
+                    let req_msg = from_utf8(&buf).unwrap();
+                    println!("{:}", "=".repeat(80));
+                    println!("buffer size: {:?}", amt);
+                    println!("src address: {:?}", &src);
+                    println!("request message: {:?}", req_msg);
+                });
             }
-            Ok(n) => n,
             Err(e) => {
-                eprintln!("failed to read from socket; err = {:?}", e);
-                return;
+                println!("couldn't recieve request: {:?}", e);
             }
-        };
-
-        if let Err(e) = socket.write_all(&buf[0..n]).await {
-            eprintln!("failed to write to socket; err = {:?}", e);
-            return;
         }
     }
 }
