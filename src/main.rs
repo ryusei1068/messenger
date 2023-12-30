@@ -31,6 +31,10 @@ impl Client {
             Err(_) => true,
         }
     }
+
+    pub fn update_last_send(&mut self) {
+        self.last_send = SystemTime::now();
+    }
 }
 
 pub struct ChatRoom {
@@ -48,9 +52,10 @@ impl ChatRoom {
         self.clients.push(client);
     }
 
-    pub fn bloadcast(&self, buf: &[u8], socket: UdpSocket, inbound: SocketAddr) {
-        for client in &self.clients {
+    pub fn bloadcast(&mut self, buf: &[u8], socket: UdpSocket, inbound: SocketAddr) {
+        for mut client in self.clients.iter_mut() {
             if inbound == client.src {
+                client.update_last_send();
                 continue;
             }
             socket
