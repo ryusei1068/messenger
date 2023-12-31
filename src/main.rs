@@ -1,4 +1,5 @@
-use core::str::from_utf8;
+use core::str::{self, from_utf8};
+use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -34,42 +35,33 @@ impl Client {
 
     pub fn update_last_send(&mut self) {
         self.last_send = SystemTime::now();
+        println!("updated: {:?} \n last_send: {:?}", self.src, self.last_send);
     }
 }
 
 pub struct ChatRoom {
-    clients: Vec<Client>,
+    clients: HashMap<String, Client>,
 }
 
 impl ChatRoom {
     pub fn new() -> ChatRoom {
         ChatRoom {
-            clients: Vec::new(),
+            clients: HashMap::new(),
         }
     }
 
-    pub fn join(&mut self, client: Client) {
-        self.clients.push(client);
+    pub fn join(&mut self, username: String, client: Client) {
+        self.clients.insert(username.to_string(), client);
     }
 
-    pub fn bloadcast(&mut self, buf: &[u8], socket: UdpSocket, inbound: SocketAddr) {
-        for mut client in self.clients.iter_mut() {
-            if inbound == client.src {
-                client.update_last_send();
+    pub fn bloadcast(&mut self, buf: &[u8], socket: UdpSocket, sender_name: String) {
+        for (username, client) in self.clients.iter() {
+            if *username == sender_name {
                 continue;
             }
             socket
                 .send_to(buf, &client.src)
                 .expect("Failed to send data back");
-        }
-    }
-
-    pub fn joined_clinets_info(&self) {
-        for client in &self.clients {
-            println!(
-                "username: {:?} \n last_send: {:?} \n src: {:?}",
-                client.username, client.last_send, client.src
-            );
         }
     }
 }
@@ -87,20 +79,33 @@ fn main() -> std::io::Result<()> {
                 // if 1 join to chat_room (urf8 49 = 1)
                 // if 2 send message (utf8 50 = 2)
                 let cmd = buf[0];
-                let buf = &mut buf[1..amt];
-                let req_msg = from_utf8(&buf).expect("Failed to receive data");
+                let mut buf_clone = buf.clone();
+
+                let username_bytes = &mut buf_clone[1..9];
+                let username = from_utf8(&username_bytes).expect("Failed to receive data");
 
                 if cmd == 49 {
-                    chat_room.join(Client::new(req_msg.to_string(), src));
+                    if username.len() <= 8 {
+                        chat_room
+                            .join(username.to_string(), Client::new(username.to_string(), src));
+                        println!("{:}", "=".repeat(80));
+                        println!("joined: {:?}", src);
+                        println!("current clients: {:?}", chat_room.clients.len());
+                        println!("{:}", "=".repeat(80));
+                    } else {
+                        let error_message = format!("Username byte length exceeded. Max length: 8");
+                        socket.send_to(error_message.as_bytes(), &src);
+                        println!("{:?}", error_message);
+                    }
                 } else if cmd == 50 {
+                    let message_bytes = &mut buf[9..amt];
                     let socket_clone = socket.try_clone().unwrap();
-                    chat_room.bloadcast(buf, socket_clone, src);
+                    chat_room.bloadcast(message_bytes, socket_clone, username.to_string());
                 }
 
                 println!("{:}", "=".repeat(80));
                 println!("buffer size: {:?}", amt);
                 println!("src address: {:?}", &src);
-                println!("request message: {:?}", req_msg);
                 println!("{:}", "=".repeat(80));
             }
             Err(e) => {
