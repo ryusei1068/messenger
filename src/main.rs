@@ -1,4 +1,5 @@
 use core::str::{self, from_utf8};
+use std::alloc::System;
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::thread;
@@ -17,25 +18,6 @@ impl Client {
             last_send: SystemTime::now(),
             src,
         }
-    }
-
-    pub fn is_active(&self) -> bool {
-        let now = SystemTime::now();
-        match now.duration_since(self.last_send) {
-            Ok(duration) => {
-                if duration >= Duration::from_secs(10 * 60) {
-                    true
-                } else {
-                    false
-                }
-            }
-            Err(_) => true,
-        }
-    }
-
-    pub fn update_last_send(&mut self) {
-        self.last_send = SystemTime::now();
-        println!("updated: {:?} \n last_send: {:?}", self.src, self.last_send);
     }
 }
 
@@ -62,6 +44,30 @@ impl ChatRoom {
             socket
                 .send_to(buf, &client.src)
                 .expect("Failed to send data back");
+        }
+    }
+
+    pub fn get_sender_user_and_activate(&mut self, username: String) {
+        match self.clients.get_mut(&username) {
+            Some(client) => {
+                client.last_send = SystemTime::now();
+                println!("updated: {:?} \n last_send: {:?}", client.src, client.src);
+            }
+            None => println!("failure"),
+        };
+    }
+
+    pub fn is_active(&self, client: Client) -> bool {
+        let now = SystemTime::now();
+        match now.duration_since(client.last_send) {
+            Ok(duration) => {
+                if duration >= Duration::from_secs(10 * 60) {
+                    true
+                } else {
+                    false
+                }
+            }
+            Err(_) => true,
         }
     }
 }
