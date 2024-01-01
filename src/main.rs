@@ -1,7 +1,6 @@
-use core::str::{self, from_utf8};
-use std::alloc::System;
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
+use std::str;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -47,7 +46,7 @@ impl ChatRoom {
         }
     }
 
-    pub fn get_sender_user_and_activate(&mut self, username: String) {
+    pub fn update_last_send(&mut self, username: String) {
         match self.clients.get_mut(&username) {
             Some(client) => {
                 client.last_send = SystemTime::now();
@@ -88,21 +87,14 @@ fn main() -> std::io::Result<()> {
                 let mut buf_clone = buf.clone();
 
                 let username_bytes = &mut buf_clone[1..9];
-                let username = from_utf8(&username_bytes).expect("Failed to receive data");
+                let username = str::from_utf8(&username_bytes).expect("Failed to receive data");
 
                 if cmd == 49 {
-                    if username.len() <= 8 {
-                        chat_room
-                            .join(username.to_string(), Client::new(username.to_string(), src));
-                        println!("{:}", "=".repeat(80));
-                        println!("joined: {:?}", src);
-                        println!("current clients: {:?}", chat_room.clients.len());
-                        println!("{:}", "=".repeat(80));
-                    } else {
-                        let error_message = format!("Username byte length exceeded. Max length: 8");
-                        socket.send_to(error_message.as_bytes(), &src);
-                        println!("{:?}", error_message);
-                    }
+                    chat_room.join(username.to_string(), Client::new(username.to_string(), src));
+                    println!("{:}", "=".repeat(80));
+                    println!("joined: {:?}", src);
+                    println!("current clients: {:?}", chat_room.clients.len());
+                    println!("{:}", "=".repeat(80));
                 } else if cmd == 50 {
                     let message_bytes = &mut buf[9..amt];
                     let socket_clone = socket.try_clone().unwrap();
