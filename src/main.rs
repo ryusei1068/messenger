@@ -80,9 +80,8 @@ fn main() -> std::io::Result<()> {
 
         match socket.recv_from(&mut buf) {
             Ok((amt, src)) => {
-                // 1byte read
-                // if 1 join to chat_room (urf8 49 = 1)
-                // if 2 send message (utf8 50 = 2)
+                // 1 join to chat_room (urf8 49 = 1)
+                // 2 send message (utf8 50 = 2)
                 let cmd = buf[0];
                 let mut buf_clone = buf.clone();
 
