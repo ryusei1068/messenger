@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
-use std::str;
 use std::thread;
 use std::time::{Duration, SystemTime};
+use std::{str, usize};
 
+const SERVER_ADDRESS: &str = "127.0.0.1:34254";
+const MSG_SIZE: usize = 4096;
+
+#[derive(Debug)]
 pub struct Client {
     username: String,
     last_send: SystemTime,
@@ -35,24 +39,28 @@ impl ChatRoom {
         self.clients.insert(username.to_string(), client);
     }
 
-    pub fn bloadcast(&mut self, buf: &[u8], socket: UdpSocket, sender_name: String) {
+    pub fn bloadcast(
+        &mut self,
+        buf: &[u8],
+        socket: UdpSocket,
+        sender_name: String,
+    ) -> std::io::Result<()> {
         for (username, client) in self.clients.iter() {
             if *username == sender_name {
                 continue;
             }
-            socket
-                .send_to(buf, &client.src)
-                .expect("Failed to send data back");
+            socket.send_to(buf, &client.src)?;
         }
+        Ok(())
     }
 
     pub fn update_last_send(&mut self, username: String) {
         match self.clients.get_mut(&username) {
             Some(client) => {
                 client.last_send = SystemTime::now();
-                println!("updated: {:?} \n last_send: {:?}", client.src, client.src);
+                println!("updated client: {:?} ", client);
             }
-            None => println!("failure"),
+            None => println!("Not found client: {:?}", username),
         };
     }
 
@@ -72,11 +80,11 @@ impl ChatRoom {
 }
 
 fn main() -> std::io::Result<()> {
-    let socket = UdpSocket::bind("127.0.0.1:34254")?;
+    let socket = UdpSocket::bind(SERVER_ADDRESS)?;
     let mut chat_room = ChatRoom::new();
 
     let handle = thread::spawn(move || loop {
-        let mut buf = [0; 4096];
+        let mut buf = [0; MSG_SIZE];
 
         match socket.recv_from(&mut buf) {
             Ok((amt, src)) => {
