@@ -17,7 +17,7 @@ impl Outbound {
         Outbound { socket, receiver }
     }
 
-    fn send(&self) -> std::io::Result<()> {
+    fn send(&self) {
         while let Ok(msg) = self.receiver.recv() {
             match self.socket.send_to(msg.as_bytes(), SERVER_ADDRESS) {
                 Ok(_) => {
@@ -28,7 +28,6 @@ impl Outbound {
                 }
             };
         }
-        Ok(())
     }
 }
 
