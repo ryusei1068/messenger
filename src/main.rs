@@ -15,7 +15,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(username: String, src: SocketAddr) -> Client {
+    fn new(username: String, src: SocketAddr) -> Client {
         Client {
             username,
             last_send: SystemTime::now(),
@@ -24,22 +24,22 @@ impl Client {
     }
 }
 
-pub struct ChatRoom {
+struct ChatRoom {
     clients: HashMap<String, Client>,
 }
 
 impl ChatRoom {
-    pub fn new() -> ChatRoom {
+    fn new() -> ChatRoom {
         ChatRoom {
             clients: HashMap::new(),
         }
     }
 
-    pub fn join(&mut self, username: String, client: Client) {
+    fn join(&mut self, username: String, client: Client) {
         self.clients.insert(username.to_string(), client);
     }
 
-    pub fn bloadcast(
+    fn bloadcast(
         &mut self,
         buf: &[u8],
         socket: UdpSocket,
@@ -54,7 +54,7 @@ impl ChatRoom {
         Ok(())
     }
 
-    pub fn update_last_send(&mut self, username: String) {
+    fn update_last_send(&mut self, username: String) {
         match self.clients.get_mut(&username) {
             Some(client) => {
                 client.last_send = SystemTime::now();
@@ -64,7 +64,7 @@ impl ChatRoom {
         };
     }
 
-    pub fn is_active(&self, client: Client) -> bool {
+    fn is_active(&self, client: Client) -> bool {
         let now = SystemTime::now();
         match now.duration_since(client.last_send) {
             Ok(duration) => {
