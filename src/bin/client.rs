@@ -5,16 +5,30 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
 const SERVER_ADDRESS: &str = "127.0.0.1:34254";
-const MSG_SIZE: usize = 4087;
 const NAME_SIZE: usize = 8;
 
 struct Outbound {
     socket: UdpSocket,
+    receiver: Receiver<String>,
 }
 
 impl Outbound {
-    fn new(socket: UdpSocket) -> Outbound {
-        Outbound { socket }
+    fn new(socket: UdpSocket, receiver: Receiver<String>) -> Outbound {
+        Outbound { socket, receiver }
+    }
+
+    fn send(&self) -> std::io::Result<()> {
+        while let Ok(msg) = self.receiver.recv() {
+            match self.socket.send_to(msg.as_bytes(), SERVER_ADDRESS) {
+                Ok(_) => {
+                    println!("Message sent successfully.");
+                }
+                Err(e) => {
+                    println!("Failed to send message {:?}", e);
+                }
+            };
+        }
+        Ok(())
     }
 }
 
@@ -23,25 +37,31 @@ struct User {
 }
 
 struct Hander {
-    outbound: Outbound,
     user: User,
+    sender: Sender<String>,
 }
 
 impl Hander {
-    pub fn new(outbound: Outbound) -> Hander {
+    fn new(sender: Sender<String>) -> Hander {
         Hander {
-            outbound,
             user: User {
                 name: "".to_string(),
             },
+            sender,
         }
     }
 
-    pub fn join_user(&mut self, name: String) {
+    fn join_user(&mut self, name: String) {
         self.user.name = name;
     }
 
-    pub fn process_event(&mut self) -> std::io::Result<()> {
+    fn channel_sender(&mut self, msg: String) {
+        if self.sender.send(msg).is_err() {
+            println!("failed to send to the channel");
+        }
+    }
+
+    fn process_event(&mut self) {
         let stdin = io::stdin();
         let mut lines = stdin.lock().lines();
 
@@ -52,14 +72,11 @@ impl Hander {
                         println!("Your name: ");
                         let mut prefix: String = "1".to_string();
                         if let Some(Ok(mut username)) = lines.next() {
-                            println!("Username received: {}", username);
-
                             username.truncate(NAME_SIZE);
                             prefix.push_str(username.as_str());
                             self.join_user(username);
-                            self.outbound
-                                .socket
-                                .send_to(prefix.as_bytes(), SERVER_ADDRESS)?;
+
+                            self.channel_sender(prefix);
                         } else {
                             eprintln!("Failed to read username");
                         }
@@ -68,13 +85,10 @@ impl Hander {
                         println!("Write a Message: ");
                         let mut prefix: String = "2".to_string();
                         if let Some(Ok(message)) = lines.next() {
-                            println!("Message received: {}", message);
-
                             prefix.push_str(self.user.name.as_str());
                             prefix.push_str(message.as_str());
-                            self.outbound
-                                .socket
-                                .send_to(prefix.as_bytes(), SERVER_ADDRESS)?;
+
+                            self.channel_sender(prefix);
                         } else {
                             eprintln!("Failed to read message");
                         }
@@ -88,7 +102,6 @@ impl Hander {
                 }
             }
         }
-        Ok(())
     }
 }
 
@@ -121,11 +134,14 @@ impl Inbound {
 }
 
 fn main() -> std::io::Result<()> {
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
-    let inbound = Inbound::new(socket.try_clone().expect("Faield to clone udp socket"));
-    let outbound = Outbound::new(socket);
     let (sender, receiver) = mpsc::channel::<String>();
-    let mut hander = Hander::new(outbound);
+
+    let socket = UdpSocket::bind("0.0.0.0:0")?;
+
+    let inbound = Inbound::new(socket.try_clone().expect("Faield to clone udp socket"));
+    let outbound = Outbound::new(socket, receiver);
+
+    let mut hander = Hander::new(sender);
 
     println!("\n {:}", "=".repeat(80));
     println!("Please select an Action: ");
@@ -135,6 +151,7 @@ fn main() -> std::io::Result<()> {
     println!("{:} \n", "=".repeat(80));
 
     thread::spawn(move || inbound.recv_datagram());
+    thread::spawn(move || outbound.send());
     hander.process_event();
 
     Ok(())
