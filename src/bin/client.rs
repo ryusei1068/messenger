@@ -71,7 +71,14 @@ impl Hander {
                         println!("Your name: ");
                         let mut prefix: String = "1".to_string();
                         if let Some(Ok(mut username)) = lines.next() {
-                            username.truncate(NAME_SIZE);
+                            // 8 byte adjust
+                            username = if username.len() < 8 {
+                                format!("{:<8}", username)
+                            } else {
+                                username.truncate(NAME_SIZE);
+                                username
+                            };
+
                             prefix.push_str(username.as_str());
                             self.join_user(username);
 

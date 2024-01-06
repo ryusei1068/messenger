@@ -47,15 +47,21 @@ impl ChatRoom {
     }
 
     fn join(&mut self, client: Client) {
+        println!("Joined client {:?}", &client);
         self.clients.insert(client.username.to_string(), client);
     }
 
-    fn bloadcast(&mut self, buf: &[u8], socket: UdpSocket, sender_name: String) {
+    fn leave(&mut self, client: Client) {
+        println!("Leaved client {:?}", client);
+        self.clients.remove(&client.username);
+    }
+
+    fn bloadcast(&self, buf: &[u8], socket: UdpSocket, sender_name: String) {
         for (username, client) in self.clients.iter() {
-            if *username == sender_name {
+            if *username.to_string() == sender_name || !self.is_active(client) {
                 continue;
             }
-            match socket.send_to(buf, &client.src) {
+            match socket.send_to(buf, client.src) {
                 Ok(_) => {
                     println!("Message sent successfully.");
                 }
@@ -76,15 +82,9 @@ impl ChatRoom {
         };
     }
 
-    fn is_active(&self, client: Client) -> bool {
+    fn is_active(&self, client: &Client) -> bool {
         match SystemTime::now().duration_since(client.last_send) {
-            Ok(duration) => {
-                if duration >= Duration::from_secs(10 * 60) {
-                    true
-                } else {
-                    false
-                }
-            }
+            Ok(duration) => Duration::from_secs(10 * 60) <= duration,
             Err(_) => true,
         }
     }
@@ -157,11 +157,6 @@ impl Inbound {
                             println!("failed to send to the channel");
                         }
                     }
-
-                    println!("{:}", "=".repeat(80));
-                    println!("buffer size: {:?}", amt);
-                    println!("src address: {:?}", &src);
-                    println!("{:}", "=".repeat(80));
                 }
                 Err(e) => {
                     println!("couldn't recieve request: {:?}", e);
@@ -197,6 +192,9 @@ impl EventsHander {
                     self.chat_room.join(client);
                 }
                 ChannelMessage::Send(user_msg) => {
+                    let username = user_msg.name.clone();
+                    self.chat_room.update_last_send(username);
+
                     if let Ok(clone_socket) = self.socket.try_clone() {
                         self.chat_room.bloadcast(
                             user_msg.message.as_bytes(),
