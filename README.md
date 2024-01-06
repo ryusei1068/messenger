@@ -1,5 +1,5 @@
 # messager
-CLI chat
+CLI chat (UDP)
 ## usage
 server
 ```
