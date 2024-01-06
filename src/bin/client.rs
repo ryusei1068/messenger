@@ -54,13 +54,13 @@ impl Hander {
         self.user.name = name;
     }
 
-    fn channel_sender(&mut self, msg: String) {
+    fn send_channel(&mut self, msg: String) {
         if self.sender.send(msg).is_err() {
             println!("failed to send to the channel");
         }
     }
 
-    fn process_event(&mut self) {
+    fn process_events(&mut self) {
         let stdin = io::stdin();
         let mut lines = stdin.lock().lines();
 
@@ -75,7 +75,7 @@ impl Hander {
                             prefix.push_str(username.as_str());
                             self.join_user(username);
 
-                            self.channel_sender(prefix);
+                            self.send_channel(prefix);
                         } else {
                             eprintln!("Failed to read username");
                         }
@@ -87,7 +87,7 @@ impl Hander {
                             prefix.push_str(self.user.name.as_str());
                             prefix.push_str(message.as_str());
 
-                            self.channel_sender(prefix);
+                            self.send_channel(prefix);
                         } else {
                             eprintln!("Failed to read message");
                         }
@@ -109,11 +109,11 @@ struct Inbound {
 }
 
 impl Inbound {
-    pub fn new(socket: UdpSocket) -> Inbound {
-        Inbound { socket: socket }
+    fn new(socket: UdpSocket) -> Inbound {
+        Inbound { socket }
     }
 
-    pub fn recv_datagram(&self) {
+    fn recv_datagram(&self) {
         loop {
             let mut buffer = [0; 4096];
             match self.socket.recv_from(&mut buffer) {
@@ -142,7 +142,7 @@ fn main() -> std::io::Result<()> {
 
     let mut hander = Hander::new(sender);
 
-    println!("\n {:}", "=".repeat(80));
+    println!("{:}", "=".repeat(80));
     println!("Please select an Action: ");
     println!("1. Join Room");
     println!("2. Send Message");
@@ -151,7 +151,7 @@ fn main() -> std::io::Result<()> {
 
     thread::spawn(move || inbound.recv_datagram());
     thread::spawn(move || outbound.send());
-    hander.process_event();
+    hander.process_events();
 
     Ok(())
 }
