@@ -53,12 +53,13 @@ impl ChatRoom {
 
     fn leave(&mut self, client: Client) {
         println!("Leaved client {:?}", client);
-        self.clients.remove(&client.username);
+        self.clients.remove(&client.username.to_string());
     }
 
-    fn bloadcast(&self, buf: &[u8], socket: UdpSocket, sender_name: String) {
+    fn bloadcast(&mut self, buf: &[u8], socket: UdpSocket, sender_name: String) {
         for (username, client) in self.clients.iter() {
-            if *username.to_string() == sender_name || !self.is_active(client) {
+            if *username.to_string() == sender_name {
+                println!("continue");
                 continue;
             }
             match socket.send_to(buf, client.src) {
@@ -159,26 +160,26 @@ impl Inbound {
                     }
                 }
                 Err(e) => {
-                    println!("couldn't recieve request: {:?}", e);
+                    println!("couldn't receive request: {:?}", e);
                 }
             }
         }
     }
 }
 
-struct EventsHander {
+struct EventsHandler {
     receiver: Receiver<ChannelMessage>,
     chat_room: ChatRoom,
     socket: UdpSocket,
 }
 
-impl EventsHander {
+impl EventsHandler {
     fn new(
         receiver: Receiver<ChannelMessage>,
         chat_room: ChatRoom,
         socket: UdpSocket,
-    ) -> EventsHander {
-        EventsHander {
+    ) -> EventsHandler {
+        EventsHandler {
             receiver,
             chat_room,
             socket,
@@ -219,10 +220,10 @@ fn main() -> std::io::Result<()> {
         socket.try_clone().expect("Failed to clone udp socket"),
         sender,
     );
-    let mut events_hander = EventsHander::new(receiver, chat_room, socket);
+    let mut events_handler = EventsHandler::new(receiver, chat_room, socket);
 
     thread::spawn(move || {
-        events_hander.process_events();
+        events_handler.process_events();
     });
 
     inbound.receive_message();

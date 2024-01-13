@@ -35,14 +35,14 @@ struct User {
     name: String,
 }
 
-struct Hander {
+struct Handler {
     user: User,
     sender: Sender<String>,
 }
 
-impl Hander {
-    fn new(sender: Sender<String>) -> Hander {
-        Hander {
+impl Handler {
+    fn new(sender: Sender<String>) -> Handler {
+        Handler {
             user: User {
                 name: "".to_string(),
             },
@@ -126,7 +126,7 @@ impl Inbound {
             match self.socket.recv_from(&mut buffer) {
                 Ok((amt, _)) => {
                     println!(
-                        "Recived message: {}",
+                        "Received message: {}",
                         String::from_utf8_lossy(&buffer[..amt])
                     );
                 }
@@ -144,10 +144,10 @@ fn main() -> std::io::Result<()> {
 
     let socket = UdpSocket::bind("0.0.0.0:0")?;
 
-    let inbound = Inbound::new(socket.try_clone().expect("Faield to clone udp socket"));
+    let inbound = Inbound::new(socket.try_clone().expect("Failed to clone udp socket"));
     let outbound = Outbound::new(socket, receiver);
 
-    let mut hander = Hander::new(sender);
+    let mut handler = Handler::new(sender);
 
     println!("{:}", "=".repeat(80));
     println!("Please select an Action: ");
@@ -158,7 +158,7 @@ fn main() -> std::io::Result<()> {
 
     thread::spawn(move || inbound.recv_datagram());
     thread::spawn(move || outbound.send());
-    hander.process_events();
+    handler.process_events();
 
     Ok(())
 }
