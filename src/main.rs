@@ -33,6 +33,17 @@ impl Client {
             src,
         }
     }
+
+    fn is_active(&self) -> bool {
+        match SystemTime::now().duration_since(self.last_send) {
+            Ok(duration) => duration <= Duration::from_secs(10 * 60),
+            Err(_) => true,
+        }
+    }
+
+    fn update_last_send(&mut self) {
+        self.last_send = SystemTime::now();
+    }
 }
 
 struct ChatRoom {
@@ -51,15 +62,18 @@ impl ChatRoom {
         self.clients.insert(client.username.to_string(), client);
     }
 
-    fn leave(&mut self, client: Client) {
+    fn leave(&mut self, client: &Client) {
         println!("Leaved client {:?}", client);
         self.clients.remove(&client.username.to_string());
     }
 
+    fn get_client(&mut self, username: &String) -> Option<&mut Client> {
+        self.clients.get_mut(username)
+    }
+
     fn bloadcast(&mut self, buf: &[u8], socket: UdpSocket, sender_name: String) {
         for (username, client) in self.clients.iter() {
-            if *username.to_string() == sender_name || !self.is_active(client) {
-                println!("continue");
+            if *username.to_string() == sender_name || !client.is_active() {
                 continue;
             }
             match socket.send_to(buf, client.src) {
@@ -70,23 +84,6 @@ impl ChatRoom {
                     println!("Failed to send message {:?}", e);
                 }
             }
-        }
-    }
-
-    fn update_last_send(&mut self, username: String) {
-        match self.clients.get_mut(&username) {
-            Some(client) => {
-                client.last_send = SystemTime::now();
-                println!("updated client: {:?} ", client);
-            }
-            None => println!("Not found client: {:?}", username),
-        };
-    }
-
-    fn is_active(&self, client: &Client) -> bool {
-        match SystemTime::now().duration_since(client.last_send) {
-            Ok(duration) => duration <= Duration::from_secs(10 * 60),
-            Err(_) => true,
         }
     }
 }
@@ -194,7 +191,14 @@ impl EventsHandler {
                 }
                 ChannelMessage::Send(user_msg) => {
                     let username = user_msg.name.clone();
-                    self.chat_room.update_last_send(username);
+                    match self.chat_room.get_client(&username) {
+                        Some(client) => {
+                            client.update_last_send();
+                        }
+                        None => {
+                            println!("Not found client: {:?}", username);
+                        }
+                    };
 
                     if let Ok(clone_socket) = self.socket.try_clone() {
                         self.chat_room.bloadcast(
