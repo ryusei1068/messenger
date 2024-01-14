@@ -58,7 +58,7 @@ impl ChatRoom {
 
     fn bloadcast(&mut self, buf: &[u8], socket: UdpSocket, sender_name: String) {
         for (username, client) in self.clients.iter() {
-            if *username.to_string() == sender_name {
+            if *username.to_string() == sender_name || !self.is_active(client) {
                 println!("continue");
                 continue;
             }
@@ -85,7 +85,7 @@ impl ChatRoom {
 
     fn is_active(&self, client: &Client) -> bool {
         match SystemTime::now().duration_since(client.last_send) {
-            Ok(duration) => Duration::from_secs(10 * 60) <= duration,
+            Ok(duration) => duration <= Duration::from_secs(10 * 60),
             Err(_) => true,
         }
     }
