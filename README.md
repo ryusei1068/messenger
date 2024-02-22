@@ -3,9 +3,9 @@ CLI chat (UDP)
 ## usage
 server
 ```
-cargo run --bin messanger
+cargo run
 ```
 client
 ```
-cargo run --bin client
+cargo run --example client
 ```
