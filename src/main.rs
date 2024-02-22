@@ -1,236 +1,136 @@
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::str;
+use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, SystemTime};
-use std::{str, usize};
 
-const SERVER_ADDRESS: &str = "127.0.0.1:34254";
+const SERVER_ADDRESS: &str = "127.0.0.1:8080";
 const MSG_SIZE: usize = 4096;
 
-enum ChannelMessage {
-    Join(Client),
-    Send(UserMessage),
-}
-
-struct UserMessage {
-    name: String,
-    message: String,
+#[derive(Debug)]
+enum Request {
+    Join,
+    Send,
 }
 
 #[derive(Debug)]
-pub struct Client {
-    username: String,
-    last_send: SystemTime,
-    src: SocketAddr,
+struct Message {
+    request: Option<Request>,
+    name: String,
+    text: String,
 }
 
-impl Client {
-    fn new(username: String, src: SocketAddr) -> Client {
-        Client {
-            username,
-            last_send: SystemTime::now(),
-            src,
-        }
-    }
-
-    fn is_active(&self) -> bool {
-        match SystemTime::now().duration_since(self.last_send) {
-            Ok(duration) => duration <= Duration::from_secs(10 * 60),
-            Err(_) => true,
-        }
-    }
-
-    fn update_last_send(&mut self) {
-        self.last_send = SystemTime::now();
-    }
+#[derive(Debug)]
+struct Client {
+    name: String,
+    src_addr: SocketAddr,
 }
 
-struct ChatRoom {
+#[derive(Debug)]
+struct Room {
+    udp_socket: UdpSocket,
     clients: HashMap<String, Client>,
 }
 
-impl ChatRoom {
-    fn new() -> ChatRoom {
-        ChatRoom {
-            clients: HashMap::new(),
-        }
+impl Room {
+    fn join(&mut self, name: String, client: Client) {
+        self.clients.insert(name, client);
     }
 
-    fn join(&mut self, client: Client) {
-        println!("Joined client {:?}", &client);
-        self.clients.insert(client.username.to_string(), client);
-    }
-
-    fn leave(&mut self, client: &Client) {
-        println!("Leaved client {:?}", client);
-        self.clients.remove(&client.username.to_string());
-    }
-
-    fn get_client(&mut self, username: &String) -> Option<&mut Client> {
-        self.clients.get_mut(username)
-    }
-
-    fn bloadcast(&mut self, buf: &[u8], socket: UdpSocket, sender_name: String) {
-        for (username, client) in self.clients.iter() {
-            if *username.to_string() == sender_name || !client.is_active() {
-                continue;
-            }
-            match socket.send_to(buf, client.src) {
+    fn broadcast(&self, message: Message) {
+        for client in self.clients.values() {
+            match self
+                .udp_socket
+                .send_to(message.text.as_bytes(), client.src_addr)
+            {
                 Ok(_) => {
-                    println!("Message sent successfully.");
+                    println!("succeeded");
                 }
                 Err(e) => {
-                    println!("Failed to send message {:?}", e);
+                    println!("cloud not send a message: {:?}", e);
                 }
             }
         }
     }
 }
 
-struct Inbound {
-    socket: UdpSocket,
-    sender: Sender<ChannelMessage>,
+fn map_request(request: &str) -> Option<Request> {
+    match request {
+        "1" => Some(Request::Join),
+        "2" => Some(Request::Send),
+        _ => None,
+    }
 }
 
-impl Inbound {
-    fn new(socket: UdpSocket, sender: Sender<ChannelMessage>) -> Inbound {
-        Inbound { socket, sender }
-    }
+fn parse(buf: &[u8], src_addr: SocketAddr) -> (Message, Client) {
+    let (request_byte, rest) = buf.split_at(1);
+    let (name_bytes, text_bytes) = rest.split_at(7);
 
-    fn receive_message(&self) {
-        loop {
-            let mut buf = [0; MSG_SIZE];
+    (
+        Message {
+            request: map_request(encode_msg(request_byte)),
+            name: encode_msg(name_bytes).into(),
+            text: encode_msg(text_bytes).into(),
+        },
+        Client {
+            name: encode_msg(name_bytes).into(),
+            src_addr: src_addr,
+        },
+    )
+}
 
-            match self.socket.recv_from(&mut buf) {
-                Ok((amt, src)) => {
-                    // 1 join to chat_room (urf8 49 = 1)
-                    // 2 send message (utf8 50 = 2)
-                    let cmd = buf[0];
-                    let mut buf_clone = buf.clone();
-
-                    let username_bytes = &mut buf_clone[1..9];
-                    let username = match str::from_utf8(username_bytes) {
-                        Ok(name) => name,
-                        Err(e) => {
-                            println!("Failed to convert to &str {:?}", e);
-                            ""
-                        }
-                    };
-
-                    if username.is_empty() {
-                        continue;
-                    }
-
-                    if cmd == 49 {
-                        if self
-                            .sender
-                            .send(ChannelMessage::Join(Client::new(username.to_string(), src)))
-                            .is_err()
-                        {
-                            println!("failed to send to the channel");
-                        }
-                    } else if cmd == 50 {
-                        let message_bytes = &mut buf[9..amt];
-                        let msg = match str::from_utf8(message_bytes) {
-                            Ok(msg) => msg,
-                            Err(e) => {
-                                println!("Failed to convert to &str {:?}", e);
-                                ""
-                            }
-                        };
-
-                        if msg.is_empty() {
-                            continue;
-                        }
-
-                        if self
-                            .sender
-                            .send(ChannelMessage::Send(UserMessage {
-                                message: msg.to_string(),
-                                name: username.to_string(),
-                            }))
-                            .is_err()
-                        {
-                            println!("failed to send to the channel");
-                        }
-                    }
-                }
-                Err(e) => {
-                    println!("couldn't receive request: {:?}", e);
-                }
-            }
+fn encode_msg(buf: &[u8]) -> &str {
+    match str::from_utf8(&buf) {
+        Ok(msg) => msg,
+        Err(e) => {
+            println!("could not encode: {:?}", e);
+            ""
         }
     }
 }
 
-struct EventsHandler {
-    receiver: Receiver<ChannelMessage>,
-    chat_room: ChatRoom,
-    socket: UdpSocket,
-}
+fn main() {
+    let socket = UdpSocket::bind(SERVER_ADDRESS).expect("could not bind UdpSocket");
+    let socket_clone = socket.try_clone().expect("could not clone of UdpSocket");
 
-impl EventsHandler {
-    fn new(
-        receiver: Receiver<ChannelMessage>,
-        chat_room: ChatRoom,
-        socket: UdpSocket,
-    ) -> EventsHandler {
-        EventsHandler {
-            receiver,
-            chat_room,
-            socket,
-        }
-    }
+    let (tx, rx) = mpsc::channel::<(Message, Client)>();
 
-    fn process_events(&mut self) {
-        while let Ok(message) = self.receiver.recv() {
-            match message {
-                ChannelMessage::Join(client) => {
-                    self.chat_room.join(client);
-                }
-                ChannelMessage::Send(user_msg) => {
-                    let username = user_msg.name.clone();
-                    match self.chat_room.get_client(&username) {
-                        Some(client) => {
-                            client.update_last_send();
-                        }
-                        None => {
-                            println!("Not found client: {:?}", username);
-                        }
-                    };
+    let mut buf = [0; MSG_SIZE];
 
-                    if let Ok(clone_socket) = self.socket.try_clone() {
-                        self.chat_room.bloadcast(
-                            user_msg.message.as_bytes(),
-                            clone_socket,
-                            user_msg.name,
-                        );
-                    } else {
-                        println!("Failed to clone udp socket.");
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn main() -> std::io::Result<()> {
-    let socket = UdpSocket::bind(SERVER_ADDRESS)?;
-    let chat_room = ChatRoom::new();
-
-    let (sender, receiver) = mpsc::channel::<ChannelMessage>();
-    let inbound = Inbound::new(
-        socket.try_clone().expect("Failed to clone udp socket"),
-        sender,
-    );
-    let mut events_handler = EventsHandler::new(receiver, chat_room, socket);
+    let mut room = Room {
+        udp_socket: socket_clone,
+        clients: HashMap::new(),
+    };
 
     thread::spawn(move || {
-        events_handler.process_events();
+        while let Ok(msg) = rx.recv() {
+            println!("{:?}", msg);
+
+            if let Some(ref request) = msg.0.request {
+                match request {
+                    Request::Join => {
+                        println!("join: {}", msg.0.name);
+                        room.join(msg.0.name, msg.1);
+                    }
+                    Request::Send => {
+                        println!("send: {:?}", msg.0);
+                        room.broadcast(msg.0);
+                    }
+                }
+            }
+        }
     });
 
-    inbound.receive_message();
-
-    Ok(())
+    loop {
+        match socket.recv_from(&mut buf) {
+            Ok((buf_size, src_addr)) => {
+                let buf = &mut buf[..buf_size];
+                let parsed_request = parse(&buf, src_addr);
+                let _ = tx.send(parsed_request);
+            }
+            Err(e) => {
+                println!("couldn't receive request: {:?}", e);
+            }
+        }
+    }
 }
