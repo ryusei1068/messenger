@@ -8,14 +8,14 @@ const SERVER_ADDRESS: &str = "127.0.0.1:8080";
 const MSG_SIZE: usize = 4096;
 
 #[derive(Debug)]
-enum Request {
+enum Method {
     Join,
     Send,
 }
 
 #[derive(Debug)]
-struct Message {
-    request: Option<Request>,
+struct Request {
+    method: Option<Method>,
     name: String,
     text: String,
 }
@@ -37,38 +37,41 @@ impl Room {
         self.clients.insert(name, client);
     }
 
-    fn broadcast(&self, message: Message) {
+    fn broadcast(&self, request: Request) {
         for client in self.clients.values() {
+            if client.name == request.name {
+                continue;
+            }
             match self
                 .udp_socket
-                .send_to(message.text.as_bytes(), client.src_addr)
+                .send_to(request.text.as_bytes(), client.src_addr)
             {
                 Ok(_) => {
                     println!("succeeded");
                 }
                 Err(e) => {
-                    println!("cloud not send a message: {:?}", e);
+                    println!("cloud not send a request.text: {:?}", e);
                 }
             }
         }
     }
 }
 
-fn map_request(request: &str) -> Option<Request> {
-    match request {
-        "1" => Some(Request::Join),
-        "2" => Some(Request::Send),
+fn map_method(method: &str) -> Option<Method> {
+    match method {
+        "1" => Some(Method::Join),
+        "2" => Some(Method::Send),
         _ => None,
     }
 }
 
-fn parse(buf: &[u8], src_addr: SocketAddr) -> (Message, Client) {
-    let (request_byte, rest) = buf.split_at(1);
+fn parse(buf: &[u8], src_addr: SocketAddr) -> (Request, Client) {
+    let (method_byte, rest) = buf.split_at(1);
     let (name_bytes, text_bytes) = rest.split_at(7);
 
     (
-        Message {
-            request: map_request(encode_msg(request_byte)),
+        Request {
+            method: map_method(encode_msg(method_byte)),
             name: encode_msg(name_bytes).into(),
             text: encode_msg(text_bytes).into(),
         },
@@ -93,7 +96,7 @@ fn main() {
     let socket = UdpSocket::bind(SERVER_ADDRESS).expect("could not bind UdpSocket");
     let socket_clone = socket.try_clone().expect("could not clone of UdpSocket");
 
-    let (tx, rx) = mpsc::channel::<(Message, Client)>();
+    let (tx, rx) = mpsc::channel::<(Request, Client)>();
 
     let mut buf = [0; MSG_SIZE];
 
@@ -103,18 +106,18 @@ fn main() {
     };
 
     thread::spawn(move || {
-        while let Ok(msg) = rx.recv() {
-            println!("{:?}", msg);
+        while let Ok(req) = rx.recv() {
+            println!("{:?}", req);
 
-            if let Some(ref request) = msg.0.request {
-                match request {
-                    Request::Join => {
-                        println!("join: {}", msg.0.name);
-                        room.join(msg.0.name, msg.1);
+            if let Some(ref method) = req.0.method {
+                match method {
+                    Method::Join => {
+                        println!("join: {:?}", req.1);
+                        room.join(req.0.name, req.1);
                     }
-                    Request::Send => {
-                        println!("send: {:?}", msg.0);
-                        room.broadcast(msg.0);
+                    Method::Send => {
+                        println!("send: {:?}", req.0);
+                        room.broadcast(req.0);
                     }
                 }
             }
