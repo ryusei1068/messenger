@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::str;
@@ -13,10 +14,10 @@ enum Method {
     Send,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Request {
-    method: Option<Method>,
-    name: String,
+    method: String,
+    from: String,
     text: String,
 }
 
@@ -39,7 +40,7 @@ impl Room {
 
     fn broadcast(&self, request: Request) {
         for client in self.clients.values() {
-            if client.name == request.name {
+            if client.name == request.from {
                 continue;
             }
             match self
@@ -57,8 +58,8 @@ impl Room {
     }
 }
 
-fn map_method(method: &str) -> Option<Method> {
-    match method {
+fn map_method(method: &String) -> Option<Method> {
+    match method.as_str() {
         "1" => Some(Method::Join),
         "2" => Some(Method::Send),
         _ => None,
@@ -66,30 +67,24 @@ fn map_method(method: &str) -> Option<Method> {
 }
 
 fn parse(buf: &[u8], src_addr: SocketAddr) -> (Request, Client) {
-    let (method_byte, rest) = buf.split_at(1);
-    let (name_bytes, text_bytes) = rest.split_at(7);
+    let req_byte = match std::str::from_utf8(&buf) {
+        Ok(req_byte) => req_byte,
+        Err(e) => {
+            println!("Error converting bytes to string: {}", e);
+            ""
+        }
+    };
+
+    let req1: Request = serde_json::from_str(&req_byte).unwrap();
+    let req2: Request = serde_json::from_str(&req_byte).unwrap();
 
     (
-        Request {
-            method: map_method(encode_msg(method_byte)),
-            name: encode_msg(name_bytes).into(),
-            text: encode_msg(text_bytes).into(),
-        },
+        req1,
         Client {
-            name: encode_msg(name_bytes).into(),
+            name: req2.from,
             src_addr: src_addr,
         },
     )
-}
-
-fn encode_msg(buf: &[u8]) -> &str {
-    match str::from_utf8(&buf) {
-        Ok(msg) => msg,
-        Err(e) => {
-            println!("could not encode: {:?}", e);
-            ""
-        }
-    }
 }
 
 fn main() {
@@ -109,11 +104,12 @@ fn main() {
         while let Ok(req) = rx.recv() {
             println!("{:?}", req);
 
-            if let Some(ref method) = req.0.method {
+            if let Some(ref method) = map_method(&req.0.method) {
                 match method {
                     Method::Join => {
                         println!("join: {:?}", req.1);
-                        room.join(req.0.name, req.1);
+                        let name = req.1.name.clone();
+                        room.join(name, req.1);
                     }
                     Method::Send => {
                         println!("send: {:?}", req.0);

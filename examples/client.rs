@@ -1,164 +1,155 @@
 use core::str;
-use std::io::{self, BufRead};
+use serde::{Deserialize, Serialize};
+use std::io::Write;
+use std::io::{self};
 use std::net::UdpSocket;
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
 const SERVER_ADDRESS: &str = "127.0.0.1:8080";
 const NAME_SIZE: usize = 8;
 
-struct Outbound {
-    socket: UdpSocket,
-    receiver: Receiver<String>,
-}
-
-impl Outbound {
-    fn new(socket: UdpSocket, receiver: Receiver<String>) -> Outbound {
-        Outbound { socket, receiver }
-    }
-
-    fn send(&self) {
-        while let Ok(msg) = self.receiver.recv() {
-            match self.socket.send_to(msg.as_bytes(), SERVER_ADDRESS) {
-                Ok(_) => {
-                    println!("Message sent successfully.");
-                }
-                Err(e) => {
-                    println!("Failed to send message {:?}", e);
-                }
-            };
-        }
-    }
+#[derive(Serialize, Deserialize, Debug)]
+struct Request {
+    method: String,
+    from: String,
+    text: String,
 }
 
 struct User {
     name: String,
+    joined: bool,
 }
 
-struct Handler {
-    user: User,
-    sender: Sender<String>,
-}
+impl User {
+    fn join(&mut self) -> Option<Request> {
+        let name = self.name.clone();
+        let mut req = Request {
+            method: "".into(),
+            from: name,
+            text: "".into(),
+        };
 
-impl Handler {
-    fn new(sender: Sender<String>) -> Handler {
-        Handler {
-            user: User {
-                name: "".to_string(),
-            },
-            sender,
-        }
-    }
-
-    fn join_user(&mut self, name: String) {
-        self.user.name = name;
-    }
-
-    fn send_channel(&mut self, msg: String) {
-        if self.sender.send(msg).is_err() {
-            println!("failed to send to the channel");
-        }
-    }
-
-    fn process_events(&mut self) {
-        let stdin = io::stdin();
-        let mut lines = stdin.lock().lines();
-
-        loop {
-            if let Some(Ok(action)) = lines.next() {
-                match action.trim().to_lowercase().as_str() {
-                    "1" => {
-                        println!("Your name: ");
-                        let mut prefix: String = "1".to_string();
-                        if let Some(Ok(mut username)) = lines.next() {
-                            // 8 byte adjust
-                            username = if username.len() < 8 {
-                                format!("{:<8}", username)
-                            } else {
-                                username.truncate(NAME_SIZE);
-                                username
-                            };
-
-                            prefix.push_str(username.as_str());
-                            self.join_user(username);
-
-                            self.send_channel(prefix);
-                        } else {
-                            eprintln!("Failed to read username");
-                        }
-                    }
-                    "2" => {
-                        println!("Write a Message: ");
-                        let mut prefix: String = "2".to_string();
-                        if let Some(Ok(message)) = lines.next() {
-                            prefix.push_str(self.user.name.as_str());
-                            prefix.push_str(message.as_str());
-
-                            self.send_channel(prefix);
-                        } else {
-                            eprintln!("Failed to read message");
-                        }
-                    }
-                    "0" => {
-                        break;
-                    }
-                    _ => {
-                        continue;
-                    }
+        match input("Do you enter the room?, (yes:1 / no:0)".into()) {
+            Ok(input) => {
+                println!("{}", input);
+                if input == "1" {
+                    self.joined = true;
+                    req.method = "1".into();
+                    Some(req)
+                } else {
+                    println!("Ok. Bye bye");
+                    None
                 }
+            }
+            Err(_) => {
+                println!("Please try again:");
+                None
             }
         }
     }
 }
 
-struct Inbound {
+struct Handler {
+    user: User,
     socket: UdpSocket,
 }
 
-impl Inbound {
-    fn new(socket: UdpSocket) -> Inbound {
-        Inbound { socket }
+impl Handler {
+    fn new(user: User, socket: UdpSocket) -> Handler {
+        Handler { user, socket }
     }
 
-    fn recv_datagram(&self) {
+    fn process_events(&mut self) {
         loop {
-            let mut buffer = [0; 4096];
-            match self.socket.recv_from(&mut buffer) {
-                Ok((amt, _)) => {
-                    println!(
-                        "Received message: {}",
-                        String::from_utf8_lossy(&buffer[..amt])
-                    );
-                }
-                Err(e) => {
-                    println!("{:?}", e);
+            if !self.user.joined {
+                if let Some(req) = self.user.join() {
+                    self.send(req);
+                } else {
                     break;
                 }
             }
         }
     }
+
+    fn send(&self, req: Request) {
+        match self.socket.send_to(
+            serde_json::to_string(&req).unwrap().as_bytes(),
+            SERVER_ADDRESS,
+        ) {
+            Ok(_) => {
+                println!("Message sent successfully.");
+            }
+            Err(e) => {
+                println!("Failed to send message {:?}", e);
+            }
+        };
+    }
 }
 
-fn main() -> std::io::Result<()> {
-    let (sender, receiver) = mpsc::channel::<String>();
+fn trim_input(mut text: String, limit_length: usize) -> String {
+    if text.len() < limit_length {
+        format!("{:<8}", text)
+    } else {
+        text.truncate(limit_length);
+        text
+    }
+}
 
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
+fn input(prompt_msg: String) -> Result<String, String> {
+    print!("{}: ", prompt_msg);
 
-    let inbound = Inbound::new(socket.try_clone().expect("Failed to clone udp socket"));
-    let outbound = Outbound::new(socket, receiver);
+    match io::stdout().flush() {
+        Ok(_) => {}
+        Err(e) => {
+            return Err(format!("failed to flush stdout: {}", e));
+        }
+    }
 
-    let mut handler = Handler::new(sender);
+    let mut input = String::new();
+    match io::stdin().read_line(&mut input) {
+        Ok(_) => Ok(input.trim().into()),
+        Err(e) => Err(format!("error reading input: {}", e)),
+    }
+}
+
+fn main() {
+    let user_name = trim_input(
+        input("please your name".into()).expect("cloud not read your name. Please try again."),
+        NAME_SIZE,
+    );
+    println!("Your name is {}", user_name);
+    let user = User {
+        name: user_name,
+        joined: false,
+    };
+
+    let socket = UdpSocket::bind("0.0.0.0:0").expect("cloud not bind UdpSocket");
+    let socket_clone = socket.try_clone().expect("failed to clone UdpSocket");
+    let mut handler = Handler::new(user, socket);
 
     println!("{:}", "=".repeat(80));
+    println!("Welcome to the CLI Chat!!!!");
     println!("Please select an Action: ");
     println!("1. Join Room");
     println!("2. Send Message");
     println!("0. Exit");
     println!("{:} \n", "=".repeat(80));
 
-    thread::spawn(move || inbound.recv_datagram());
-    thread::spawn(move || outbound.send());
     handler.process_events();
 
-    Ok(())
+    thread::spawn(move || loop {
+        let mut buffer = [0; 4096];
+        match socket_clone.recv_from(&mut buffer) {
+            Ok((amt, _)) => {
+                println!(
+                    "Received message: {}",
+                    String::from_utf8_lossy(&buffer[..amt])
+                );
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                break;
+            }
+        }
+    });
 }
