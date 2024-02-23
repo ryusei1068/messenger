@@ -29,9 +29,8 @@ impl User {
             text: "".into(),
         };
 
-        match input("Do you enter the room?, (yes:1 / no:0)".into()) {
+        match input("\nDo you enter the room? (yes:1 / no:0)".into()) {
             Ok(input) => {
-                println!("{}", input);
                 if input == "1" {
                     self.joined = true;
                     req.method = "1".into();
@@ -56,13 +55,13 @@ impl User {
             text: "".into(),
         };
 
-        match input("Write messege: ".into()) {
+        match input("\nWrite messege: ".into()) {
             Ok(input) => {
                 req.text = input;
                 Some(req)
             }
             Err(_) => {
-                println!("Please try again:");
+                println!("Please try again");
                 None
             }
         }
@@ -88,7 +87,7 @@ impl Handler {
                     break;
                 }
             }
-            match input("Send messege to your room?, (yes:1 / no:0)".into()) {
+            match input("\nSend messege to your room? (yes:1 / no:0)".into()) {
                 Ok(input) => {
                     if input == "1" {
                         if let Some(req) = self.user.enter_messege() {
@@ -97,17 +96,18 @@ impl Handler {
                     }
                 }
                 Err(_) => {
-                    println!("Please try again:");
+                    println!("Please try again");
                 }
             }
-            match input("Leave your room?, (yes:1 / no:0)".into()) {
+            match input("\nLeave your room? (yes:1 / no:0)".into()) {
                 Ok(input) => {
                     if input == "1" {
+                        println!("Bye bye.");
                         break;
                     }
                 }
                 Err(_) => {
-                    println!("Please try again:");
+                    println!("Please try again");
                 }
             }
         }
@@ -154,7 +154,7 @@ fn input(prompt_msg: String) -> Result<String, String> {
 
 fn main() {
     let user_name = trim_input(
-        input("please your name".into()).expect("cloud not read your name. Please try again."),
+        input("\nplease your name".into()).expect("cloud not read your name. Please try again."),
         NAME_SIZE,
     );
     println!("Your name is {}", user_name);
@@ -162,7 +162,7 @@ fn main() {
     let socket = UdpSocket::bind("0.0.0.0:0").expect("cloud not bind UdpSocket");
     let socket_clone = socket.try_clone().expect("failed to clone UdpSocket");
 
-    println!("{:}", "=".repeat(80));
+    println!("\n{:}", "=".repeat(80));
     println!("Hi, {}. Welcome to the CLI Chat!!!!", user_name);
     println!("Please select an Action: ");
     println!("1. Join Room");
@@ -181,7 +181,7 @@ fn main() {
         match socket_clone.recv_from(&mut buffer) {
             Ok((amt, _)) => {
                 println!(
-                    "Received message: {}",
+                    "\nReceived message: {}",
                     String::from_utf8_lossy(&buffer[..amt])
                 );
             }

@@ -48,10 +48,10 @@ impl Room {
                 .send_to(request.text.as_bytes(), client.src_addr)
             {
                 Ok(_) => {
-                    println!("succeeded");
+                    println!("\nsucceeded");
                 }
                 Err(e) => {
-                    println!("cloud not send a request.text: {:?}", e);
+                    println!("\ncloud not send a request.text: {:?}", e);
                 }
             }
         }
@@ -102,17 +102,15 @@ fn main() {
 
     thread::spawn(move || {
         while let Ok(req) = rx.recv() {
-            println!("{:?}", req);
-
             if let Some(ref method) = map_method(&req.0.method) {
                 match method {
                     Method::Join => {
-                        println!("join: {:?}", req.1);
+                        println!("\njoin: {:?}", req.1);
                         let name = req.1.name.clone();
                         room.join(name, req.1);
                     }
                     Method::Send => {
-                        println!("send: {:?}", req.0);
+                        println!("\nsend: {:?}", req.0);
                         room.broadcast(req.0);
                     }
                 }
