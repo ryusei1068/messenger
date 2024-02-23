@@ -47,6 +47,26 @@ impl User {
             }
         }
     }
+
+    fn enter_messege(&self) -> Option<Request> {
+        let name = self.name.clone();
+        let mut req = Request {
+            method: "2".into(),
+            from: name,
+            text: "".into(),
+        };
+
+        match input("Write messege: ".into()) {
+            Ok(input) => {
+                req.text = input;
+                Some(req)
+            }
+            Err(_) => {
+                println!("Please try again:");
+                None
+            }
+        }
+    }
 }
 
 struct Handler {
@@ -68,6 +88,28 @@ impl Handler {
                     break;
                 }
             }
+            match input("Send messege to your room?, (yes:1 / no:0)".into()) {
+                Ok(input) => {
+                    if input == "1" {
+                        if let Some(req) = self.user.enter_messege() {
+                            self.send(req);
+                        }
+                    }
+                }
+                Err(_) => {
+                    println!("Please try again:");
+                }
+            }
+            match input("Leave your room?, (yes:1 / no:0)".into()) {
+                Ok(input) => {
+                    if input == "1" {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    println!("Please try again:");
+                }
+            }
         }
     }
 
@@ -76,9 +118,7 @@ impl Handler {
             serde_json::to_string(&req).unwrap().as_bytes(),
             SERVER_ADDRESS,
         ) {
-            Ok(_) => {
-                println!("Message sent successfully.");
-            }
+            Ok(_) => {}
             Err(e) => {
                 println!("Failed to send message {:?}", e);
             }
@@ -118,24 +158,23 @@ fn main() {
         NAME_SIZE,
     );
     println!("Your name is {}", user_name);
-    let user = User {
-        name: user_name,
-        joined: false,
-    };
 
     let socket = UdpSocket::bind("0.0.0.0:0").expect("cloud not bind UdpSocket");
     let socket_clone = socket.try_clone().expect("failed to clone UdpSocket");
-    let mut handler = Handler::new(user, socket);
 
     println!("{:}", "=".repeat(80));
-    println!("Welcome to the CLI Chat!!!!");
+    println!("Hi, {}. Welcome to the CLI Chat!!!!", user_name);
     println!("Please select an Action: ");
     println!("1. Join Room");
     println!("2. Send Message");
     println!("0. Exit");
     println!("{:} \n", "=".repeat(80));
 
-    handler.process_events();
+    let user = User {
+        name: user_name,
+        joined: false,
+    };
+    let mut handler = Handler::new(user, socket);
 
     thread::spawn(move || loop {
         let mut buffer = [0; 4096];
@@ -152,4 +191,6 @@ fn main() {
             }
         }
     });
+
+    handler.process_events();
 }
