@@ -66,7 +66,7 @@ fn map_method(method: &String) -> Option<Method> {
     }
 }
 
-fn parse(buf: &[u8], src_addr: SocketAddr) -> (Request, Client) {
+fn parse(buf: &[u8], src_addr: SocketAddr) -> Result<(Request, Client), String> {
     let req_byte = match std::str::from_utf8(&buf) {
         Ok(req_byte) => req_byte,
         Err(e) => {
@@ -75,16 +75,19 @@ fn parse(buf: &[u8], src_addr: SocketAddr) -> (Request, Client) {
         }
     };
 
-    let req1: Request = serde_json::from_str(&req_byte).unwrap();
-    let req2: Request = serde_json::from_str(&req_byte).unwrap();
-
-    (
-        req1,
-        Client {
-            name: req2.from,
-            src_addr: src_addr,
-        },
-    )
+    match serde_json::from_str::<Request>(&req_byte) {
+        Ok(req) => {
+            let from = req.from.clone();
+            Ok((
+                req,
+                Client {
+                    name: from,
+                    src_addr: src_addr,
+                },
+            ))
+        }
+        Err(e) => Err(format!("failed to deserialize {:?}", e)),
+    }
 }
 
 fn main() {
@@ -122,8 +125,9 @@ fn main() {
         match socket.recv_from(&mut buf) {
             Ok((buf_size, src_addr)) => {
                 let buf = &mut buf[..buf_size];
-                let parsed_request = parse(&buf, src_addr);
-                let _ = tx.send(parsed_request);
+                if let Ok(parsed_request) = parse(&buf, src_addr) {
+                    let _ = tx.send(parsed_request);
+                }
             }
             Err(e) => {
                 println!("couldn't receive request: {:?}", e);
