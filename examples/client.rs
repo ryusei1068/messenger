@@ -5,13 +5,13 @@ use std::io::{self};
 use std::net::UdpSocket;
 use std::thread;
 
-const SERVER_ADDRESS: &str = "127.0.0.1:8080";
-const NAME_SIZE: usize = 8;
+const UDP_SERVER_ADDRESS: &str = "127.0.0.1:8080";
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Request {
     method: String,
     from: String,
+    to: String,
     text: String,
 }
 
@@ -26,6 +26,7 @@ impl User {
         let mut req = Request {
             method: "".into(),
             from: name,
+            to: "".into(),
             text: "".into(),
         };
 
@@ -52,6 +53,7 @@ impl User {
         let mut req = Request {
             method: "2".into(),
             from: name,
+            to: "".into(),
             text: "".into(),
         };
 
@@ -114,24 +116,19 @@ impl Handler {
     }
 
     fn send(&self, req: Request) {
-        match self.socket.send_to(
-            serde_json::to_string(&req).unwrap().as_bytes(),
-            SERVER_ADDRESS,
-        ) {
-            Ok(_) => {}
-            Err(e) => {
-                println!("Failed to send message {:?}", e);
+        match serde_json::to_string(&req) {
+            Ok(req) => {
+                match self.socket.send_to(req.as_bytes(), UDP_SERVER_ADDRESS) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        println!("Failed to send message {:?}", e);
+                    }
+                };
             }
-        };
-    }
-}
-
-fn trim_input(mut text: String, limit_length: usize) -> String {
-    if text.len() < limit_length {
-        format!("{:<8}", text)
-    } else {
-        text.truncate(limit_length);
-        text
+            Err(e) => {
+                println!("failed to serialize {:?}", e);
+            }
+        }
     }
 }
 
@@ -153,10 +150,8 @@ fn input(prompt_msg: String) -> Result<String, String> {
 }
 
 fn main() {
-    let user_name = trim_input(
-        input("\nplease your name".into()).expect("cloud not read your name. Please try again."),
-        NAME_SIZE,
-    );
+    let user_name =
+        input("\nplease your name".into()).expect("cloud not read your name. Please try again.");
     println!("Your name is {}", user_name);
 
     let socket = UdpSocket::bind("0.0.0.0:0").expect("cloud not bind UdpSocket");
@@ -174,7 +169,6 @@ fn main() {
         name: user_name,
         joined: false,
     };
-    let mut handler = Handler::new(user, socket);
 
     thread::spawn(move || loop {
         let mut buffer = [0; 4096];
@@ -192,5 +186,6 @@ fn main() {
         }
     });
 
+    let mut handler = Handler::new(user, socket);
     handler.process_events();
 }
