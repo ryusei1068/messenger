@@ -13,7 +13,6 @@ mod client;
 use client::Client;
 mod udp;
 use udp::UdpServer;
-mod utils;
 
 fn main() {
     let udp_socket = UdpSocket::bind(udp::UDP_SERVER_ADDRESS).expect("could not bind UdpSocket");
@@ -27,7 +26,7 @@ fn main() {
 
     thread::spawn(move || {
         while let Ok(req) = rx.recv() {
-            if let Some(ref method) = utils::map_method(&req.0.get_method()) {
+            if let Some(ref method) = method::map_method(&req.0.get_method()) {
                 match method {
                     Method::Join => {
                         println!("\njoin: {:?}", req.1);
