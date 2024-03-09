@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::net::UdpSocket;
-use std::str;
 use std::sync::mpsc;
 use std::thread;
 
@@ -12,20 +11,17 @@ mod room;
 use room::Room;
 mod client;
 use client::Client;
+mod udp;
+use udp::UdpServer;
 mod utils;
 
-const UDP_SERVER_ADDRESS: &str = "127.0.0.1:8080";
-const MSG_SIZE: usize = 4096;
-
 fn main() {
-    let udp_socket = UdpSocket::bind(UDP_SERVER_ADDRESS).expect("could not bind UdpSocket");
+    let udp_socket = UdpSocket::bind(udp::UDP_SERVER_ADDRESS).expect("could not bind UdpSocket");
     let udp_socket_clone = udp_socket
         .try_clone()
         .expect("could not clone of UdpSocket");
 
     let (tx, rx) = mpsc::channel::<(Request, Client)>();
-
-    let mut buf = [0; MSG_SIZE];
 
     let mut room = Room::new(udp_socket, HashMap::new());
 
@@ -51,17 +47,7 @@ fn main() {
         }
     });
 
-    loop {
-        match udp_socket_clone.recv_from(&mut buf) {
-            Ok((buf_size, udp_socket_addr)) => {
-                let buf = &mut buf[..buf_size];
-                if let Ok(parsed_request) = utils::parse(&buf, udp_socket_addr) {
-                    let _ = tx.send(parsed_request);
-                }
-            }
-            Err(e) => {
-                println!("couldn't receive request: {:?}", e);
-            }
-        }
-    }
+    let buf = [0; udp::MSG_SIZE];
+    let mut udp_server = UdpServer::new(udp_socket_clone, buf, tx);
+    udp_server.run();
 }
