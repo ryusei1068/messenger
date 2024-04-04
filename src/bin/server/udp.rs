@@ -1,7 +1,7 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::{
-    sync::{Arc, Mutex},
     collections::HashMap,
+    sync::{Arc, Mutex},
 };
 
 use crate::client::Client;
