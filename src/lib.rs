@@ -22,7 +22,10 @@ pub fn parse_command(line: &str) -> Option<ClientRequest> {
       return Some(ClientRequest::Join {
           group_name: group.to_string(),
       });
-  } else {
+  } else if command == "get" {
+    return Some(ClientRequest::Get);
+  }
+  else {
       eprintln!("Unrecognized command: {:?}", line);
       return None;
   }
