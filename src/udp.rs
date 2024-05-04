@@ -44,7 +44,7 @@ impl UdpServer {
             }
         };
 
-        if req_byte.len() == 0 {
+        if req_byte.is_empty() {
             return Err("failed to parse error".into());
         }
 

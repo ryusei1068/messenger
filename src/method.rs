@@ -5,8 +5,8 @@ pub enum Method {
     PvtMsg,
 }
 
-pub fn map_method(method: &String) -> Option<Method> {
-    match method.as_str() {
+pub fn map_method(method: &str) -> Option<Method> {
+    match method {
         "1" => Some(Method::Join),
         "2" => Some(Method::Send),
         "3" => Some(Method::PvtMsg),
